@@ -1,6 +1,15 @@
 extends Node3D
 
 const UI_FONT: FontFile = preload("res://assets/fonts/Jua-Regular.ttf")
+const MUSIC_STREAM: AudioStreamWAV = preload("res://assets/audio/garden_loop.wav")
+const SOUND_SELECT: AudioStreamWAV = preload("res://assets/audio/select.wav")
+const SOUND_PLANT: AudioStreamWAV = preload("res://assets/audio/plant.wav")
+const SOUND_WATER: AudioStreamWAV = preload("res://assets/audio/water.wav")
+const SOUND_FERTILIZE: AudioStreamWAV = preload("res://assets/audio/fertilize.wav")
+const SOUND_HARVEST: AudioStreamWAV = preload("res://assets/audio/harvest.wav")
+const SOUND_DAY: AudioStreamWAV = preload("res://assets/audio/new_day.wav")
+const SOUND_UPGRADE: AudioStreamWAV = preload("res://assets/audio/upgrade.wav")
+const SOUND_DECORATE: AudioStreamWAV = preload("res://assets/audio/decorate.wav")
 const SAVE_PATH := "user://garden_save.json"
 const SAVE_VERSION := 4
 const PLOT_COUNT := 12
@@ -49,6 +58,11 @@ var plants: Array = []
 var decorations: Array = []
 var selected_tool := "daisy"
 var selected_plot := -1
+var sound_enabled := true
+var music_player: AudioStreamPlayer
+var sound_players: Array[AudioStreamPlayer] = []
+var next_sound_player := 0
+var audio_unlocked := false
 
 var camera: Camera3D
 var weather_environment: Environment
@@ -75,6 +89,7 @@ var day_button: Button
 var upgrade_button: Button
 var decorate_button: Button
 var header_label: Label
+var sound_button: Button
 var detail_label: Label
 var order_label: Label
 var message_label: Label
@@ -93,6 +108,7 @@ var browser_import_pending := false
 
 func _ready() -> void:
 	_load_game()
+	_build_audio()
 	_build_world()
 	_apply_weather_visuals()
 	_build_ui()
@@ -103,6 +119,50 @@ func _ready() -> void:
 	get_viewport().size_changed.connect(_layout_ui)
 	_layout_ui()
 	call_deferred("_layout_ui")
+
+
+func _build_audio() -> void:
+	music_player = AudioStreamPlayer.new()
+	var music_wav := MUSIC_STREAM.duplicate() as AudioStreamWAV
+	music_wav.loop_mode = AudioStreamWAV.LOOP_FORWARD
+	music_wav.loop_begin = 0
+	music_wav.loop_end = int(music_wav.get_length() * music_wav.mix_rate)
+	music_player.stream = music_wav
+	music_player.volume_db = -8.0
+	add_child(music_player)
+	for i in range(4):
+		var player := AudioStreamPlayer.new()
+		player.volume_db = -7.0
+		add_child(player)
+		sound_players.append(player)
+
+
+func _play_sound(stream: AudioStream) -> void:
+	if not sound_enabled:
+		return
+	if not audio_unlocked:
+		audio_unlocked = true
+		music_player.play()
+	var player := sound_players[next_sound_player]
+	next_sound_player = (next_sound_player + 1) % sound_players.size()
+	player.stream = stream
+	player.play()
+
+
+func _toggle_sound() -> void:
+	sound_enabled = not sound_enabled
+	if sound_enabled:
+		audio_unlocked = false
+		_play_sound(SOUND_SELECT)
+		_message("소리를 켰어요.")
+	else:
+		music_player.stop()
+		for player in sound_players:
+			player.stop()
+		audio_unlocked = false
+		_message("소리를 껐어요.")
+	_refresh_ui()
+	_save_game()
 
 
 func _build_world() -> void:
@@ -465,10 +525,21 @@ func _build_ui() -> void:
 	_link_button(links, "의견", FEEDBACK_URL)
 	_link_button(links, "X", X_URL)
 	_link_button(links, "Threads", THREADS_URL)
-	var info := _button(links, "소식", "#e4e9d6")
+	var menu := HBoxContainer.new()
+	menu.add_theme_constant_override("separation", 8)
+	top_stack.add_child(menu)
+	sound_button = _button(menu, "소리 켬", "#e4e9d6")
+	sound_button.tooltip_text = "배경음과 효과음 켜기 또는 끄기"
+	sound_button.pressed.connect(_toggle_sound)
+	var info := _button(menu, "소식", "#e4e9d6")
 	info.pressed.connect(_show_info)
-	var journal := _button(links, "도감", "#e4e9d6")
+	var journal := _button(menu, "도감", "#e4e9d6")
 	journal.pressed.connect(_show_journal)
+	for row in [links, menu]:
+		for button in row.get_children():
+			button.custom_minimum_size = Vector2(0, 52)
+			button.add_theme_font_size_override("font_size", 20)
+			button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 
 	action_row = HBoxContainer.new()
 	action_row.add_theme_constant_override("separation", 10)
@@ -523,7 +594,7 @@ func _build_ui() -> void:
 	var modal_stack := VBoxContainer.new()
 	modal_stack.add_theme_constant_override("separation", 14)
 	modal_panel.add_child(modal_stack)
-	modal_title = _label(modal_stack, "작은정원 | 시제품 v0.8.0", 27, "#254a3a")
+	modal_title = _label(modal_stack, "작은정원 | 시제품 v0.8.1", 27, "#254a3a")
 	modal_body = _label(modal_stack, "", 22, "#315342")
 	modal_body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	shop_grid = GridContainer.new()
@@ -594,6 +665,9 @@ func _button(parent: Control, value: String, hex: String) -> Button:
 	button.custom_minimum_size.y = 80
 	button.add_theme_font_size_override("font_size", 22)
 	button.add_theme_color_override("font_color", Color("#254a3a"))
+	button.add_theme_color_override("font_hover_color", Color("#254a3a"))
+	button.add_theme_color_override("font_pressed_color", Color("#254a3a"))
+	button.add_theme_color_override("font_hover_pressed_color", Color("#254a3a"))
 	button.add_theme_color_override("font_focus_color", Color("#254a3a"))
 	button.add_theme_stylebox_override("normal", _style(hex, 12))
 	button.add_theme_stylebox_override("hover", _style("#d6e8cf", 12))
@@ -638,7 +712,7 @@ func _layout_ui() -> void:
 		var side_x := width - side_width - 28.0
 		var stack_top := maxf(150.0, (height - 586.0) * 0.5)
 		top_panel.position = Vector2(24, 24)
-		top_panel.size = Vector2(minf(900.0, side_x - 48.0), 160)
+		top_panel.size = Vector2(minf(900.0, side_x - 48.0), 190)
 		detail_panel.position = Vector2(side_x, stack_top)
 		detail_panel.size = Vector2(side_width, 160)
 		action_row.position = Vector2(side_x, stack_top + 176)
@@ -654,7 +728,7 @@ func _layout_ui() -> void:
 		var panel_width := minf(width - 32.0, 760.0)
 		var panel_x := (width - panel_width) * 0.5
 		top_panel.position = Vector2(panel_x, 18)
-		top_panel.size = Vector2(panel_width, 160)
+		top_panel.size = Vector2(panel_width, 190)
 		bottom_panel.position = Vector2(panel_x, height - 330)
 		bottom_panel.size = Vector2(panel_width, 310)
 		detail_panel.position = Vector2(panel_x, height - 456)
@@ -710,12 +784,14 @@ func _unhandled_input(event: InputEvent) -> void:
 
 
 func _select_tool(tool: String) -> void:
+	_play_sound(SOUND_SELECT)
 	selected_tool = tool
 	message_label.text = "화단을 눌러 %s" % _tool_instruction(tool)
 	_refresh_ui()
 
 
 func _show_decor_shop() -> void:
+	_play_sound(SOUND_SELECT)
 	modal_title.text = "정원 꾸미기"
 	modal_body.text = "화분: 모든 꽃 하루 성장 +4\n벤치: 꽃 수확 보상 +3잎\n등불: 흐림과 바람 날 성장 +8\n\n같은 종류를 여러 개 놓아도 효과는 한 번만 적용돼요. 물건을 골라 빈 자리를 터치하세요. 치우면 비용의 절반을 돌려받습니다."
 	modal_body.add_theme_font_size_override("font_size", 22)
@@ -727,6 +803,7 @@ func _show_decor_shop() -> void:
 
 
 func _choose_decoration(kind: String) -> void:
+	_play_sound(SOUND_SELECT)
 	selected_tool = "decor_" + kind
 	modal.visible = false
 	if kind == "remove":
@@ -745,6 +822,7 @@ func _tap_decor(index: int) -> void:
 			var refund: int = int(DECORATIONS[placed]["cost"]) / 2
 			leaves += refund
 			decorations[index] = null
+			_play_sound(SOUND_DECORATE)
 			_message("%s을 치우고 잎 %d개를 돌려받았어요." % [DECORATIONS[placed]["name"], refund])
 	elif selected_tool.begins_with("decor_"):
 		var kind := selected_tool.trim_prefix("decor_")
@@ -759,6 +837,7 @@ func _tap_decor(index: int) -> void:
 			else:
 				leaves -= cost
 				decorations[index] = kind
+				_play_sound(SOUND_DECORATE)
 				_message("%s을 놓았어요!" % DECORATIONS[kind]["name"])
 	else:
 		if placed == null:
@@ -793,6 +872,7 @@ func _tap_plot(index: int) -> void:
 			else:
 				leaves -= price
 				plants[index] = {"kind": selected_tool, "growth": 0, "water": 0, "fed": false}
+				_play_sound(SOUND_PLANT)
 				_message("%s 씨앗을 심었어요. 물을 주고 하루를 보내세요." % FLOWERS[selected_tool]["name"])
 	elif selected_tool == "water":
 		if plant == null:
@@ -801,6 +881,7 @@ func _tap_plot(index: int) -> void:
 			_message("흙이 이미 촉촉해요.")
 		else:
 			plant["water"] = _water_capacity()
+			_play_sound(SOUND_WATER)
 			_message("물을 주었어요. %d일 동안 촉촉해요." % _water_capacity())
 	elif selected_tool == "fertilizer":
 		if plant == null:
@@ -812,6 +893,7 @@ func _tap_plot(index: int) -> void:
 		else:
 			leaves -= 5
 			plant["fed"] = true
+			_play_sound(SOUND_FERTILIZE)
 			_message("영양제를 주었어요. 성장과 수확 보상이 늘어요.")
 	elif selected_tool == "harvest":
 		if plant == null:
@@ -842,6 +924,7 @@ func _tap_plot(index: int) -> void:
 					order_complete = true
 			leaves += reward
 			plants[index] = null
+			_play_sound(SOUND_HARVEST)
 			if collection_complete and order_complete:
 				_message("%s 도감과 꽃 주문 완료! 잎 %d개를 얻었어요." % [FLOWERS[kind]["name"], reward])
 			elif collection_complete:
@@ -858,6 +941,7 @@ func _tap_plot(index: int) -> void:
 
 
 func _next_day() -> void:
+	_play_sound(SOUND_DAY)
 	day += 1
 	var weather := _weather_for_day(day)
 	var bloomed := 0
@@ -911,6 +995,7 @@ func _upgrade_greenhouse() -> void:
 		return
 	leaves -= cost
 	greenhouse_level += 1
+	_play_sound(SOUND_UPGRADE)
 	match greenhouse_level:
 		1: _message("온실 1단계! 물 준 꽃이 더 빨리 자라요.")
 		2: _message("온실 2단계! 물주기 효과가 3일 지속돼요.")
@@ -942,6 +1027,8 @@ func _water_capacity() -> int:
 
 func _refresh_ui() -> void:
 	header_label.text = "작은정원   %d일째 | %s | 잎 %d" % [day, _weather_for_day(day), leaves]
+	sound_button.text = "소리 켬" if sound_enabled else "소리 끔"
+	sound_button.add_theme_stylebox_override("normal", _style("#b4d5b4" if sound_enabled else "#f3eedf", 12))
 	var order: Dictionary = ORDERS[order_number % ORDERS.size()]
 	order_label.text = "꽃 주문 %d | %s %d/%d송이 | 완료 보상 %d잎" % [order_number + 1, FLOWERS[str(order["kind"])]["name"], order_progress, int(order["count"]), int(order["bonus"])]
 	day_button.text = "다음 날: %s >" % _weather_for_day(day + 1)
@@ -973,9 +1060,10 @@ func _refresh_ui() -> void:
 
 
 func _show_info() -> void:
-	modal_title.text = "작은정원 | 시제품 v0.8.0"
+	_play_sound(SOUND_SELECT)
+	modal_title.text = "작은정원 | 시제품 v0.8.1"
 	modal_body.add_theme_font_size_override("font_size", 22)
-	modal_body.text = "업데이트 | 2026-10-23\n날씨에 따라 정원 빛과 배경이 달라집니다. 비 오는 날에는 빗줄기와 작은 웅덩이가, 바람 부는 날에는 날리는 잎이 보여요. 꽃마다 성장 특성도 있으니 다음 날 예보를 보고 심어 보세요.\n\n진행 상황은 이 기기에 자동 저장됩니다. 로그인이나 서버 전송은 없습니다. 웹에서 브라우저 데이터를 지우면 기록이 사라질 수 있어요. '저장 백업'으로 파일을 보관하고 다른 기기에서 불러올 수 있습니다.\n\n개선 의견은 화면 위의 '의견'에서 보낼 수 있습니다."
+	modal_body.text = "업데이트 | 2026-10-23\n심기·물주기·수확에 효과음과 잔잔한 배경음을 추가했어요. 브라우저에서는 첫 터치 뒤 재생되며 위의 소리 버튼으로 끌 수 있어요.\n\n날씨와 꽃별 성장 특성을 보고 정원을 가꿔 보세요.\n\n진행 상황과 소리 설정은 이 기기에 자동 저장됩니다. 로그인이나 서버 전송은 없어요. 브라우저 데이터를 지우면 기록이 사라질 수 있으니 저장 백업을 사용하세요.\n\n개선 의견은 위의 의견 버튼에서 보낼 수 있어요."
 	shop_grid.visible = false
 	backup_row.visible = true
 	modal.visible = true
@@ -984,6 +1072,7 @@ func _show_info() -> void:
 
 
 func _show_journal() -> void:
+	_play_sound(SOUND_SELECT)
 	modal_title.text = "꽃 도감"
 	modal_body.add_theme_font_size_override("font_size", 21)
 	var rows := ["수확한 꽃 | 3송이씩 모아 보세요"]
@@ -1096,6 +1185,7 @@ func _apply_backup_json(content: String) -> bool:
 
 
 func _open_url(url: String) -> void:
+	_play_sound(SOUND_SELECT)
 	if OS.has_feature("web"):
 		JavaScriptBridge.eval("window.open('%s', '_blank', 'noopener,noreferrer');" % url)
 	else:
@@ -1171,6 +1261,7 @@ func _validated_save(content: String) -> Dictionary:
 		"harvest_counts": clean_counts,
 		"order_number": clean_order_number,
 		"order_progress": clean_order_progress,
+		"sound_enabled": bool(data.get("sound_enabled", true)),
 		"decorations": clean_decorations,
 		"plants": clean_plants
 	}
@@ -1183,6 +1274,12 @@ func _apply_save(data: Dictionary) -> void:
 	harvest_counts = data["harvest_counts"]
 	order_number = int(data["order_number"])
 	order_progress = int(data["order_progress"])
+	sound_enabled = bool(data["sound_enabled"])
+	if music_player != null and not sound_enabled:
+		music_player.stop()
+		for player in sound_players:
+			player.stop()
+		audio_unlocked = false
 	decorations = data["decorations"]
 	plants = data["plants"]
 
@@ -1200,6 +1297,7 @@ func _save_game() -> void:
 		"harvest_counts": harvest_counts,
 		"order_number": order_number,
 		"order_progress": order_progress,
+		"sound_enabled": sound_enabled,
 		"decorations": decorations,
 		"plants": plants
 	}
