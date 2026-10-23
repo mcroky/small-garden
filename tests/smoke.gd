@@ -21,6 +21,10 @@ func _run() -> void:
 	game.greenhouse_level = 0
 	game.order_number = 0
 	game.order_progress = 0
+	game.exhibition_count = 0
+	game.exhibition_progress = {"daisy": 0, "lavender": 0, "sunflower": 0}
+	game.harvest_counts = {"daisy": 0, "lavender": 0, "sunflower": 0}
+	game.decorations = [null, null, null]
 	for i in range(game.PLOT_COUNT):
 		game.plants[i] = null
 	game._select_tool("daisy")
@@ -36,10 +40,14 @@ func _run() -> void:
 	game._tap_plot(0)
 	game._next_day()
 	assert(game.rain_effects.visible and not game.wind_effects.visible)
-	assert(is_equal_approx(game.sun_light.light_energy, 0.62))
+	assert(is_equal_approx(game.sun_light.light_energy, 0.61))
+	assert(game.rain_drops.size() == 88)
+	var rain_y: float = game.rain_drops[0].position.y
+	game._process(0.25)
+	assert(not is_equal_approx(game.rain_drops[0].position.y, rain_y))
 	game._next_day()
 	assert(not game.rain_effects.visible and not game.wind_effects.visible)
-	assert(is_equal_approx(game.sun_light.light_energy, 1.05))
+	assert(is_equal_approx(game.sun_light.light_energy, 0.86))
 	assert(game.plants[0]["growth"] == 76)
 	game._tap_plot(0)
 	game._next_day()
@@ -169,6 +177,12 @@ func _run() -> void:
 	assert(game.harvest_counts["daisy"] == 0)
 	assert(game.order_progress == 0)
 	assert(game._apply_backup_json(backup))
+	var version_four: Dictionary = JSON.parse_string(backup)
+	version_four["version"] = 4
+	version_four.erase("exhibition_count")
+	version_four.erase("exhibition_progress")
+	assert(game._apply_backup_json(JSON.stringify(version_four)))
+	assert(game.exhibition_count == 0)
 	game.queue_free()
 	var loaded = scene.instantiate()
 	root.add_child(loaded)
@@ -179,7 +193,28 @@ func _run() -> void:
 	assert(loaded.order_number == 0)
 	assert(loaded.order_progress == 1)
 	assert(loaded.decorations == ["pot", null, null])
+	loaded.greenhouse_level = 3
+	loaded.exhibition_progress = {"daisy": 2, "lavender": 1, "sunflower": 0}
+	loaded.plants[0] = {"kind": "sunflower", "growth": 100, "water": 0, "fed": false}
+	loaded._select_tool("harvest")
+	loaded._tap_plot(0)
+	assert(loaded.exhibition_count == 1)
+	assert(loaded.exhibition_progress["daisy"] == 0)
+	assert(loaded.exhibition_lights[0].visible)
+	assert(loaded.exhibition_tiers[0].visible)
+	assert(loaded._current_exhibition()["name"] == "비향기 전시")
 	loaded.queue_free()
+	var festival_loaded = scene.instantiate()
+	root.add_child(festival_loaded)
+	assert(festival_loaded.exhibition_count == 1)
+	festival_loaded.leaves = 100
+	for i in range(festival_loaded.PLOT_COUNT):
+		festival_loaded.plants[i] = null
+	var next_step: Dictionary = festival_loaded._next_step()
+	assert(next_step["action"] == "plant" and next_step["seed"] == "lavender")
+	festival_loaded._on_guide_action()
+	assert(festival_loaded.plants[int(next_step["plot"])]["kind"] == "lavender")
+	festival_loaded.queue_free()
 	if had_save:
 		var restore := FileAccess.open(save_path, FileAccess.WRITE)
 		assert(restore != null)
@@ -187,5 +222,5 @@ func _run() -> void:
 		restore.close()
 	else:
 		DirAccess.remove_absolute(ProjectSettings.globalize_path(save_path))
-	print("SMOKE PASS: touch, flower traits, weather visuals, collection, orders, unique decor effects, purchase/removal, upgrades, v1-v3 migration, save, restore, load")
+	print("SMOKE PASS: touch, animated rain, flower traits, collection, orders, decor, upgrades, repeating exhibitions, v1-v4 migration, save and restore")
 	quit()

@@ -11,7 +11,7 @@ const SOUND_DAY: AudioStreamWAV = preload("res://assets/audio/new_day.wav")
 const SOUND_UPGRADE: AudioStreamWAV = preload("res://assets/audio/upgrade.wav")
 const SOUND_DECORATE: AudioStreamWAV = preload("res://assets/audio/decorate.wav")
 const SAVE_PATH := "user://garden_save.json"
-const SAVE_VERSION := 4
+const SAVE_VERSION := 5
 const PLOT_COUNT := 12
 const DECOR_SLOT_COUNT := 3
 const COLLECTION_GOAL := 3
@@ -30,6 +30,12 @@ const ORDERS := [
 	{"kind": "daisy", "count": 2, "bonus": 16},
 	{"kind": "lavender", "count": 2, "bonus": 24},
 	{"kind": "sunflower", "count": 2, "bonus": 32}
+]
+const EXHIBITIONS := [
+	{"name": "봄빛 전시", "goals": {"daisy": 2, "lavender": 1, "sunflower": 1}, "reward": 45},
+	{"name": "비향기 전시", "goals": {"daisy": 1, "lavender": 3, "sunflower": 1}, "reward": 55},
+	{"name": "햇살 전시", "goals": {"daisy": 1, "lavender": 1, "sunflower": 3}, "reward": 65},
+	{"name": "색채 전시", "goals": {"daisy": 2, "lavender": 2, "sunflower": 2}, "reward": 75}
 ]
 const DECORATIONS := {
 	"pot": {"name": "꽃 화분", "cost": 14},
@@ -54,6 +60,8 @@ var greenhouse_level := 0
 var harvest_counts := {"daisy": 0, "lavender": 0, "sunflower": 0}
 var order_number := 0
 var order_progress := 0
+var exhibition_count := 0
+var exhibition_progress := {"daisy": 0, "lavender": 0, "sunflower": 0}
 var plants: Array = []
 var decorations: Array = []
 var selected_tool := "daisy"
@@ -68,7 +76,14 @@ var camera: Camera3D
 var weather_environment: Environment
 var sun_light: DirectionalLight3D
 var rain_effects: Node3D
+var rain_drops: Array[Node3D] = []
+var rain_time := 0.0
 var wind_effects: Node3D
+var wind_leaves: Array[Node3D] = []
+var terrain_surface: MeshInstance3D
+var path_surface: MeshInstance3D
+var exhibition_lights: Array[MeshInstance3D] = []
+var exhibition_tiers: Array[Node3D] = []
 var plot_positions: Array[Vector3] = []
 var plant_hosts: Array[Node3D] = []
 var highlights: Array[Node3D] = []
@@ -117,7 +132,6 @@ func _ready() -> void:
 	_build_world()
 	_apply_weather_visuals()
 	_build_ui()
-	set_process(false)
 	_redraw_all_plants()
 	_redraw_all_decorations()
 	_refresh_ui()
@@ -177,7 +191,7 @@ func _build_world() -> void:
 	settings.background_color = Color("#d9e6d5")
 	settings.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
 	settings.ambient_light_color = Color("#e8edda")
-	settings.ambient_light_energy = 0.8
+	settings.ambient_light_energy = 0.66
 	environment.environment = settings
 	weather_environment = settings
 	add_child(environment)
@@ -185,7 +199,7 @@ func _build_world() -> void:
 	var sun := DirectionalLight3D.new()
 	sun.rotation_degrees = Vector3(-48, -28, -12)
 	sun.light_color = Color("#fff1d8")
-	sun.light_energy = 1.05
+	sun.light_energy = 0.86
 	sun.shadow_enabled = true
 	sun_light = sun
 	add_child(sun)
@@ -198,10 +212,10 @@ func _build_world() -> void:
 	camera.look_at(Vector3(1.3, 0.2, 3.2))
 	camera.current = true
 
-	_box(self, Vector3(0, -0.47, 0), Vector3(6.4, 0.65, 7.25), "#8f6950")
-	_box(self, Vector3(0, -0.10, 0), Vector3(6.7, 0.16, 7.55), "#b78b66")
-	_box(self, Vector3(0, 0, 0), Vector3(6.35, 0.15, 7.2), "#7da270")
-	_box(self, Vector3(0, 0.08, 3.36), Vector3(6.15, 0.10, 0.35), "#e3d3a4")
+	_box(self, Vector3(0, -0.47, 0), Vector3(6.4, 0.65, 7.25), "#806c57")
+	_box(self, Vector3(0, -0.10, 0), Vector3(6.7, 0.16, 7.55), "#b99d79")
+	terrain_surface = _box(self, Vector3(0, 0, 0), Vector3(6.35, 0.15, 7.2), "#8cae83")
+	path_surface = _box(self, Vector3(0, 0.08, 3.36), Vector3(6.15, 0.10, 0.35), "#a79575")
 	_build_fence()
 	_build_greenhouse()
 	_build_collection_badges()
@@ -212,13 +226,15 @@ func _build_world() -> void:
 			plot_positions.append(center)
 			_build_plot(center)
 	_build_decor_terrace()
+	_build_exhibition_lights()
+	_build_exhibition_tiers()
 
 	for i in range(13):
 		var angle := float(i) * TAU / 13.0
 		var x := sin(angle) * 2.8
 		var z := cos(angle) * 3.1
 		if absf(x) > 2.2 or z < -2.8:
-			_sphere(self, Vector3(x, 0.16, z), Vector3(0.13, 0.08, 0.14), "#587d59")
+			_sphere(self, Vector3(x, 0.16, z), Vector3(0.16, 0.09, 0.14), "#5f8c69")
 	_build_weather_effects()
 
 
@@ -226,15 +242,21 @@ func _build_weather_effects() -> void:
 	rain_effects = Node3D.new()
 	rain_effects.name = "RainEffects"
 	add_child(rain_effects)
-	# A few opaque strokes and shallow puddles keep the effect cheap on mobile WebGL.
-	for i in range(20):
-		var x := -2.72 + float(i % 5) * 1.36
-		var z := -2.88 + float(i / 5) * 1.8
-		var streak := _box(rain_effects, Vector3(x, 1.35 + float(i % 3) * 0.18, z), Vector3(0.035, 0.42, 0.035), "#b9d9dc")
-		streak.rotation_degrees.z = 12.0
-	for position in [Vector3(-2.65, 0.17, -1.35), Vector3(2.65, 0.17, 1.9), Vector3(-2.5, 0.18, 3.35)]:
-		_sphere(rain_effects, position, Vector3(0.25, 0.015, 0.14), "#a8cdd0")
-
+	# Thin falling strokes read as rain without large opaque puddles or heavy particles.
+	var rain_material := StandardMaterial3D.new()
+	rain_material.albedo_color = Color(0.54, 0.71, 0.77, 0.72)
+	rain_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	rain_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	var rain_mesh := BoxMesh.new()
+	rain_mesh.size = Vector3(0.025, 0.36, 0.025)
+	for i in range(88):
+		var streak := MeshInstance3D.new()
+		streak.mesh = rain_mesh
+		streak.material_override = rain_material
+		streak.position = Vector3(-3.05 + float((i * 37) % 61) * 0.10, 0.45 + float((i * 17) % 29) * 0.10, -3.2 + float((i * 23) % 65) * 0.10)
+		streak.rotation_degrees.z = 14.0
+		rain_effects.add_child(streak)
+		rain_drops.append(streak)
 	wind_effects = Node3D.new()
 	wind_effects.name = "WindEffects"
 	add_child(wind_effects)
@@ -243,52 +265,59 @@ func _build_weather_effects() -> void:
 		var z := -2.7 + float(i / 4) * 4.5
 		var leaf := _sphere(wind_effects, Vector3(x, 0.65 + float(i % 3) * 0.2, z), Vector3(0.14, 0.035, 0.07), "#b9bb69" if i % 2 == 0 else "#d4ae69")
 		leaf.rotation_degrees = Vector3(16, float(i * 31), -25)
+		wind_leaves.append(leaf)
 
 
 func _apply_weather_visuals() -> void:
 	var weather := _weather_for_day(day)
 	rain_effects.visible = weather == "비"
 	wind_effects.visible = weather == "바람"
+	terrain_surface.material_override = _material("#789989" if weather == "비" else "#8cae83")
+	path_surface.material_override = _material("#819990" if weather == "비" else "#a79575")
+	set_process(rain_effects.visible or wind_effects.visible or browser_import_pending)
 	match weather:
 		"비":
-			weather_environment.background_color = Color("#cadbdc")
-			weather_environment.ambient_light_color = Color("#d5e5e6")
-			sun_light.light_color = Color("#dbe9e8")
-			sun_light.light_energy = 0.62
+			weather_environment.background_color = Color("#aebfbd")
+			weather_environment.ambient_light_color = Color("#c5d8d4")
+			sun_light.light_color = Color("#d8e9e5")
+			sun_light.light_energy = 0.61
 		"흐림":
 			weather_environment.background_color = Color("#d8ded3")
 			weather_environment.ambient_light_color = Color("#e2e7db")
 			sun_light.light_color = Color("#e9ebdf")
-			sun_light.light_energy = 0.77
+			sun_light.light_energy = 0.69
 		"바람":
 			weather_environment.background_color = Color("#d7e5d5")
 			weather_environment.ambient_light_color = Color("#e7ebd9")
 			sun_light.light_color = Color("#f4e9cc")
-			sun_light.light_energy = 0.94
+			sun_light.light_energy = 0.80
 		_:
 			weather_environment.background_color = Color("#d9e6d5")
 			weather_environment.ambient_light_color = Color("#e8edda")
 			sun_light.light_color = Color("#fff1d8")
-			sun_light.light_energy = 1.05
+			sun_light.light_energy = 0.86
 
 
 func _build_fence() -> void:
 	for x in [-3.05, 3.05]:
 		for i in range(6):
-			_box(self, Vector3(x, 0.3, -3.15 + float(i) * 1.25), Vector3(0.10, 0.62, 0.10), "#ead8b1")
-		_box(self, Vector3(x, 0.28, 0), Vector3(0.10, 0.07, 6.8), "#ead8b1")
+			_box(self, Vector3(x, 0.3, -3.15 + float(i) * 1.25), Vector3(0.10, 0.62, 0.10), "#b4aa8e")
+		_box(self, Vector3(x, 0.28, 0), Vector3(0.10, 0.07, 6.8), "#b4aa8e")
 	for i in range(6):
-		_box(self, Vector3(-2.9 + float(i) * 1.16, 0.3, -3.28), Vector3(0.10, 0.62, 0.10), "#ead8b1")
-	_box(self, Vector3(0, 0.28, -3.28), Vector3(5.9, 0.07, 0.10), "#ead8b1")
+		_box(self, Vector3(-2.9 + float(i) * 1.16, 0.3, -3.28), Vector3(0.10, 0.62, 0.10), "#b4aa8e")
+	_box(self, Vector3(0, 0.28, -3.28), Vector3(5.9, 0.07, 0.10), "#b4aa8e")
 
 
 func _build_greenhouse() -> void:
 	# Each upgrade adds visible structure to the landmark at the far edge.
-	_box(self, Vector3(0, 0.38, -3.03), Vector3(1.55, 0.58, 0.64), "#e9e0c5")
-	_box(self, Vector3(0, 0.75, -3.03), Vector3(1.75, 0.14, 0.82), "#8db5a0")
-	_box(self, Vector3(-0.53, 0.39, -2.69), Vector3(0.15, 0.36, 0.08), "#8db5a0")
-	_box(self, Vector3(0.53, 0.39, -2.69), Vector3(0.15, 0.36, 0.08), "#8db5a0")
-	greenhouse_marker = _sphere(self, Vector3(0, 0.97, -3.03), Vector3(0.16, 0.16, 0.16), "#f0bf66")
+	_box(self, Vector3(0, 0.35, -3.03), Vector3(1.68, 0.53, 0.82), "#9fb7a7")
+	_box(self, Vector3(0, 0.35, -2.59), Vector3(0.45, 0.42, 0.045), "#6a9e8d")
+	for side in [-1.0, 1.0]:
+		_box(self, Vector3(side * 0.66, 0.42, -2.58), Vector3(0.14, 0.63, 0.08), "#668f7d")
+		var glass_roof := _box(self, Vector3(side * 0.47, 0.91, -3.03), Vector3(1.02, 0.09, 1.02), "#699b8d")
+		glass_roof.rotation_degrees.z = side * 24.0
+	_box(self, Vector3(0, 1.11, -3.03), Vector3(0.12, 0.09, 1.08), "#668f7d")
+	greenhouse_marker = _sphere(self, Vector3(0, 1.22, -2.58), Vector3(0.12, 0.12, 0.12), "#f0bf66")
 	for i in range(3):
 		var tier := Node3D.new()
 		add_child(tier)
@@ -303,8 +332,36 @@ func _build_greenhouse() -> void:
 		_box(second, Vector3(side * 0.84, 0.47, -3.03), Vector3(0.12, 0.80, 0.92), "#7db4a5")
 	_box(second, Vector3(0, 1.06, -3.03), Vector3(1.35, 0.11, 0.12), "#7db4a5")
 	var third := greenhouse_tiers[2]
-	_cylinder(third, Vector3(0, 1.13, -3.03), 0.07, 0.28, "#b98f59")
-	_sphere(third, Vector3(0, 1.33, -3.03), Vector3(0.28, 0.28, 0.28), "#f3d78e")
+	_cylinder(third, Vector3(0, 1.31, -3.03), 0.07, 0.28, "#b98f59")
+	_sphere(third, Vector3(0, 1.49, -3.03), Vector3(0.24, 0.24, 0.24), "#f3d78e")
+
+
+func _build_exhibition_lights() -> void:
+	_box(self, Vector3(0, 0.77, -3.26), Vector3(5.55, 0.035, 0.035), "#687f68")
+	for i in range(8):
+		var x := -2.45 + float(i) * 0.70
+		_box(self, Vector3(x, 0.68, -3.26), Vector3(0.035, 0.17, 0.035), "#687f68")
+		var light := _sphere(self, Vector3(x, 0.59, -3.26), Vector3(0.10, 0.12, 0.10), "#718f75")
+		exhibition_lights.append(light)
+
+
+func _build_exhibition_tiers() -> void:
+	for side in [1.0, -1.0]:
+		var banner := Node3D.new()
+		add_child(banner)
+		_cylinder(banner, Vector3(side * 2.86, 0.75, -2.97), 0.04, 1.35, "#726b51")
+		var fabric := _box(banner, Vector3(side * 2.62, 1.22, -2.97), Vector3(0.43, 0.25, 0.05), "#e8b86e" if side > 0 else "#b8a0c9")
+		fabric.rotation_degrees.z = -10.0 if side > 0 else 10.0
+		banner.visible = false
+		exhibition_tiers.append(banner)
+	var arch := Node3D.new()
+	add_child(arch)
+	for side in [-1.0, 1.0]:
+		_box(arch, Vector3(side * 1.06, 0.91, -3.16), Vector3(0.09, 1.55, 0.10), "#769f8b")
+	_box(arch, Vector3(0, 1.69, -3.16), Vector3(2.22, 0.10, 0.12), "#769f8b")
+	_sphere(arch, Vector3(0, 1.72, -3.16), Vector3(0.19, 0.19, 0.19), "#f4d68a")
+	arch.visible = false
+	exhibition_tiers.append(arch)
 
 
 func _build_collection_badges() -> void:
@@ -321,15 +378,15 @@ func _build_collection_badges() -> void:
 
 func _build_decor_terrace() -> void:
 	_box(self, Vector3(0, -0.31, 3.98), Vector3(6.25, 0.55, 1.12), "#8f6950")
-	_box(self, Vector3(0, -0.01, 3.98), Vector3(6.35, 0.13, 1.17), "#c79669")
-	_box(self, Vector3(0, 0.08, 3.98), Vector3(6.15, 0.08, 1.06), "#e3d3a4")
+	_box(self, Vector3(0, -0.01, 3.98), Vector3(6.35, 0.13, 1.17), "#ba8e6d")
+	_box(self, Vector3(0, 0.08, 3.98), Vector3(6.15, 0.08, 1.06), "#a99879")
 	for i in range(DECOR_SLOT_COUNT):
 		var position := Vector3((float(i) - 1.0) * 1.85, 0, 3.99)
 		decor_positions.append(position)
 		var slot := Node3D.new()
 		slot.position = position
 		add_child(slot)
-		_cylinder(slot, Vector3(0, 0.15, 0), 0.57, 0.12, "#b7c69d")
+		_cylinder(slot, Vector3(0, 0.15, 0), 0.57, 0.12, "#849b80")
 		var highlight := Node3D.new()
 		slot.add_child(highlight)
 		_cylinder(highlight, Vector3(0, 0.17, 0), 0.62, 0.04, "#f4d27f")
@@ -387,11 +444,11 @@ func _build_plot(center: Vector3) -> void:
 	var plot := Node3D.new()
 	plot.position = center
 	add_child(plot)
-	_box(plot, Vector3(0, 0.18, 0), Vector3(1.23, 0.28, 1.23), "#a87955")
-	_box(plot, Vector3(0, 0.32, 0), Vector3(1.06, 0.06, 1.06), "#5e4a3a")
+	_box(plot, Vector3(0, 0.18, 0), Vector3(1.23, 0.28, 1.23), "#9b7356")
+	_box(plot, Vector3(0, 0.32, 0), Vector3(1.06, 0.06, 1.06), "#65513f")
 	for side in [-0.58, 0.58]:
-		_box(plot, Vector3(side, 0.35, 0), Vector3(0.10, 0.12, 1.28), "#c79669")
-		_box(plot, Vector3(0, 0.35, side), Vector3(1.28, 0.12, 0.10), "#c79669")
+		_box(plot, Vector3(side, 0.35, 0), Vector3(0.10, 0.12, 1.28), "#cfaa7d")
+		_box(plot, Vector3(0, 0.35, side), Vector3(1.28, 0.12, 0.10), "#cfaa7d")
 	var highlight := Node3D.new()
 	plot.add_child(highlight)
 	for side in [-0.68, 0.68]:
@@ -411,6 +468,12 @@ func _redraw_all_plants() -> void:
 	greenhouse_marker.material_override = _material("#f0bf66" if greenhouse_level == 0 else "#fff2ab")
 	for i in range(greenhouse_tiers.size()):
 		greenhouse_tiers[i].visible = greenhouse_level > i
+	for i in range(exhibition_lights.size()):
+		var light := exhibition_lights[i]
+		light.visible = greenhouse_level >= 3
+		light.material_override = _material("#ffe4a0" if i < mini(exhibition_count, exhibition_lights.size()) else "#829985")
+	for i in range(exhibition_tiers.size()):
+		exhibition_tiers[i].visible = exhibition_count >= [1, 3, 6][i]
 	for kind in collection_badges:
 		collection_badges[kind].visible = int(harvest_counts[kind]) >= COLLECTION_GOAL
 func _redraw_plant(index: int) -> void:
@@ -557,9 +620,12 @@ func _build_ui() -> void:
 	decorate_button.pressed.connect(_show_decor_shop)
 
 	detail_panel = _panel(ui_root)
-	var guide_style := _style("#fff9e9", 18)
-	guide_style.border_color = Color("#dfae55")
+	var guide_style := _style("#fff9eb", 20)
+	guide_style.border_color = Color("#d49c50")
 	guide_style.set_border_width_all(3)
+	guide_style.shadow_color = Color(0.42, 0.31, 0.16, 0.12)
+	guide_style.shadow_size = 5
+	guide_style.shadow_offset = Vector2(0, 3)
 	detail_panel.add_theme_stylebox_override("panel", guide_style)
 	var detail_stack := VBoxContainer.new()
 	detail_stack.add_theme_constant_override("separation", 3)
@@ -567,7 +633,7 @@ func _build_ui() -> void:
 	guide_title = _label(detail_stack, "지금 할 일", 27, "#254a3a")
 	detail_label = _label(detail_stack, "", 22, "#315342")
 	detail_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	guide_button = _button(detail_stack, "추천 행동", "#e7b76c")
+	guide_button = _button(detail_stack, "추천 행동", "#e8b86e")
 	guide_button.custom_minimum_size.y = 58
 	guide_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	guide_button.pressed.connect(_on_guide_action)
@@ -607,7 +673,7 @@ func _build_ui() -> void:
 	var modal_stack := VBoxContainer.new()
 	modal_stack.add_theme_constant_override("separation", 14)
 	modal_panel.add_child(modal_stack)
-	modal_title = _label(modal_stack, "작은정원 | 시제품 v0.9.0", 27, "#254a3a")
+	modal_title = _label(modal_stack, "작은정원 | v0.10.0", 27, "#254a3a")
 	modal_body = _label(modal_stack, "", 22, "#315342")
 	modal_body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	shop_grid = GridContainer.new()
@@ -655,7 +721,13 @@ func _build_ui() -> void:
 
 func _panel(parent: Control) -> PanelContainer:
 	var panel := PanelContainer.new()
-	panel.add_theme_stylebox_override("panel", _style("#f8f5e9", 18))
+	var panel_style := _style("#f8f6ec", 20)
+	panel_style.border_color = Color("#dae3d4")
+	panel_style.set_border_width_all(2)
+	panel_style.shadow_color = Color(0.20, 0.30, 0.22, 0.13)
+	panel_style.shadow_size = 5
+	panel_style.shadow_offset = Vector2(0, 3)
+	panel.add_theme_stylebox_override("panel", panel_style)
 	parent.add_child(panel)
 	return panel
 
@@ -772,7 +844,8 @@ func _layout_ui() -> void:
 		camera.position = Vector3(8.5, 11.5, 16)
 		camera.look_at(Vector3(1.3, 0.2, 3.2))
 		var compact_shift := clampf((1500.0 - height) * 0.00023, 0.0, 0.055)
-		camera.position -= camera.global_transform.basis.y * (camera.size * compact_shift)
+		var tall_shift := clampf((height - 1280.0) / height * 0.30, 0.0, 0.06)
+		camera.position -= camera.global_transform.basis.y * (camera.size * (compact_shift + tall_shift))
 	modal.size = viewport_size
 	var modal_width := minf(width - 80.0, 760.0)
 	modal_panel.position = Vector2((width - modal_width) * 0.5, (height - 600) * 0.5)
@@ -962,10 +1035,14 @@ func _tap_plot(index: int) -> void:
 					order_number += 1
 					order_progress = 0
 					order_complete = true
+			var exhibition_reward := _record_exhibition_harvest(kind)
+			reward += exhibition_reward
 			leaves += reward
 			plants[index] = null
 			_play_sound(SOUND_HARVEST)
-			if collection_complete and order_complete:
+			if exhibition_reward > 0:
+				_message("정원 전시회 %d회 완료! 잎 %d개를 얻었어요." % [exhibition_count, reward])
+			elif collection_complete and order_complete:
 				_message("%s 도감과 꽃 주문 완료! 잎 %d개를 얻었어요." % [FLOWERS[kind]["name"], reward])
 			elif collection_complete:
 				_message("%s 도감 완성! 잎 %d개를 얻었어요." % [FLOWERS[kind]["name"], reward])
@@ -1027,7 +1104,7 @@ func _next_day() -> void:
 
 func _upgrade_greenhouse() -> void:
 	if greenhouse_level >= 3:
-		_message("온실을 모두 개선했어요.")
+		_show_exhibition()
 		return
 	var cost := 40 + greenhouse_level * 30
 	if leaves < cost:
@@ -1043,6 +1120,54 @@ func _upgrade_greenhouse() -> void:
 	_redraw_all_plants()
 	_refresh_ui()
 	_save_game()
+
+
+func _current_exhibition() -> Dictionary:
+	return EXHIBITIONS[exhibition_count % EXHIBITIONS.size()]
+
+
+func _next_exhibition_flower() -> String:
+	var goals: Dictionary = _current_exhibition()["goals"]
+	var best_kind := "daisy"
+	var best_need := -100
+	for kind in ["daisy", "lavender", "sunflower"]:
+		var growing := 0
+		for plant in plants:
+			if plant != null and str(plant["kind"]) == kind:
+				growing += 1
+		var need := int(goals[kind]) - int(exhibition_progress[kind]) - growing
+		if need > best_need:
+			best_need = need
+			best_kind = kind
+	return best_kind
+
+
+func _record_exhibition_harvest(kind: String) -> int:
+	if greenhouse_level < 3:
+		return 0
+	var exhibition := _current_exhibition()
+	var goals: Dictionary = exhibition["goals"]
+	if int(exhibition_progress[kind]) < int(goals[kind]):
+		exhibition_progress[kind] = int(exhibition_progress[kind]) + 1
+	for flower_kind in ["daisy", "lavender", "sunflower"]:
+		if int(exhibition_progress[flower_kind]) < int(goals[flower_kind]):
+			return 0
+	exhibition_count += 1
+	exhibition_progress = {"daisy": 0, "lavender": 0, "sunflower": 0}
+	return int(exhibition["reward"])
+
+
+func _show_exhibition() -> void:
+	_play_sound(SOUND_SELECT)
+	var exhibition := _current_exhibition()
+	var goals: Dictionary = exhibition["goals"]
+	modal_title.text = "정원 전시회 · %d회차" % (exhibition_count + 1)
+	modal_body.text = "온실을 완성했어요! 이제 꽃을 모아 전시회를 열어 보세요.\n\n%s\n데이지 %d/%d · 라벤더 %d/%d · 해바라기 %d/%d\n\n완료 보상: 잎 %d개\n전시회 1·3·6회에 깃발과 아치가 추가돼요. 등불도 하나씩 켜집니다.\n완료한 전시회: %d회\n\n전시회는 주제가 바뀌며 계속 이어집니다. 필요한 꽃은 [지금 할 일]에 표시돼요." % [str(exhibition["name"]), int(exhibition_progress["daisy"]), int(goals["daisy"]), int(exhibition_progress["lavender"]), int(goals["lavender"]), int(exhibition_progress["sunflower"]), int(goals["sunflower"]), int(exhibition["reward"]), exhibition_count]
+	shop_grid.visible = false
+	backup_row.visible = false
+	modal.visible = true
+	_layout_ui()
+	call_deferred("_layout_ui")
 
 
 func _message(value: String) -> void:
@@ -1066,12 +1191,19 @@ func _water_capacity() -> int:
 
 
 func _next_step() -> Dictionary:
-	for i in range(PLOT_COUNT):
-		var plant = plants[i]
-		if plant != null and int(plant.get("growth", 0)) >= 100:
+	var exhibition_goals: Dictionary = _current_exhibition()["goals"] if greenhouse_level >= 3 else {}
+	for preferred in [true, false]:
+		for i in range(PLOT_COUNT):
+			var plant = plants[i]
+			if plant == null or int(plant.get("growth", 0)) < 100:
+				continue
+			var kind := str(plant["kind"])
+			var needed := greenhouse_level >= 3 and int(exhibition_progress[kind]) < int(exhibition_goals[kind])
+			if preferred and not needed:
+				continue
 			return {
-				"title": "지금 할 일 · 꽃 수확하기",
-				"hint": "%s가 피었어요. 수확해서 잎을 모으세요." % FLOWERS[str(plant["kind"])]["name"],
+				"title": "지금 할 일 · 전시 꽃 수확" if needed else "지금 할 일 · 꽃 수확하기",
+				"hint": "%s가 피었어요. 전시회에 보낼 꽃이에요." % FLOWERS[kind]["name"] if needed else "%s가 피었어요. 수확해서 잎을 모으세요." % FLOWERS[kind]["name"],
 				"button": "바로 수확하기",
 				"action": "harvest",
 				"plot": i
@@ -1091,12 +1223,22 @@ func _next_step() -> Dictionary:
 			return {"title": "지금 할 일 · 다음 날 보내기", "hint": "꽃이 자라는 중이에요. 하루가 지나면 더 자라요.", "button": "다음 날로", "action": "day", "plot": -1}
 	for i in range(PLOT_COUNT):
 		if plants[i] == null:
-			var free_seed := leaves < int(FLOWERS["daisy"]["cost"])
+			var target_kind := _next_exhibition_flower() if greenhouse_level >= 3 else "daisy"
+			var seed_kind := target_kind
+			if leaves < int(FLOWERS[seed_kind]["cost"]):
+				seed_kind = "daisy"
+			var free_seed := seed_kind == "daisy" and leaves < int(FLOWERS["daisy"]["cost"])
+			var planting_hint := "빈 화단에 데이지를 심고 정원을 가꿔 보세요."
+			if greenhouse_level >= 3:
+				planting_hint = "전시회에 필요한 %s를 심어 보세요." % FLOWERS[seed_kind]["name"] if seed_kind == target_kind else "잎을 모으기 위해 데이지를 먼저 심어요."
+			if free_seed:
+				planting_hint = "잎이 없어도 데이지 한 송이는 무료로 심을 수 있어요."
 			return {
-				"title": "지금 할 일 · 꽃 심기",
-				"hint": "잎이 없어도 데이지 한 송이는 무료로 심을 수 있어요." if free_seed else "빈 화단에 데이지를 심고 정원을 가꿔 보세요.",
-				"button": "무료 데이지 심기" if free_seed else "데이지 심기",
+				"title": "지금 할 일 · 전시 꽃 심기" if greenhouse_level >= 3 else "지금 할 일 · 꽃 심기",
+				"hint": planting_hint,
+				"button": "무료 데이지 심기" if free_seed else "%s 심기" % FLOWERS[seed_kind]["name"],
 				"action": "plant",
+				"seed": seed_kind,
 				"plot": i
 			}
 	return {"title": "지금 할 일 · 정원 살펴보기", "hint": "화단을 눌러 꽃 상태를 확인하세요.", "button": "", "action": "none", "plot": -1}
@@ -1110,7 +1252,7 @@ func _on_guide_action() -> void:
 	var step := _next_step()
 	match str(step["action"]):
 		"harvest", "water", "plant":
-			selected_tool = "daisy" if str(step["action"]) == "plant" else str(step["action"])
+			selected_tool = str(step.get("seed", "daisy")) if str(step["action"]) == "plant" else str(step["action"])
 			_tap_plot(int(step["plot"]))
 		"day":
 			_next_day()
@@ -1126,10 +1268,16 @@ func _refresh_ui() -> void:
 	guide_button.text = str(step["button"])
 	guide_button.visible = str(step["action"]) != "none"
 	var order: Dictionary = ORDERS[order_number % ORDERS.size()]
-	order_label.text = "꽃 주문 · %s %d/%d송이 수확하면 +%d잎" % [FLOWERS[str(order["kind"])]["name"], order_progress, int(order["count"]), int(order["bonus"])]
+	if greenhouse_level >= 3:
+		var exhibition := _current_exhibition()
+		var goals: Dictionary = exhibition["goals"]
+		var target := _next_exhibition_flower()
+		order_label.text = "전시회 %d회차 · %s %d/%d송이" % [exhibition_count + 1, FLOWERS[target]["name"], int(exhibition_progress[target]), int(goals[target])]
+	else:
+		order_label.text = "꽃 주문 · %s %d/%d송이 수확하면 +%d잎" % [FLOWERS[str(order["kind"])]["name"], order_progress, int(order["count"]), int(order["bonus"])]
 	day_button.text = "다음 날: %s >" % _weather_for_day(day + 1)
 	if greenhouse_level >= 3:
-		upgrade_button.text = "온실 최고 단계"
+		upgrade_button.text = "전시회 %d회" % exhibition_count
 	else:
 		upgrade_button.text = "온실 개선 %d잎" % (40 + greenhouse_level * 30)
 	for tool in TOOL_ORDER:
@@ -1177,9 +1325,9 @@ func _refresh_ui() -> void:
 
 func _show_info() -> void:
 	_play_sound(SOUND_SELECT)
-	modal_title.text = "작은정원 시작하기 | v0.9.0"
+	modal_title.text = "작은정원 시작하기 | v0.10.0"
 	modal_body.add_theme_font_size_override("font_size", 22)
-	modal_body.text = "[지금 할 일]의 큰 버튼을 누르면 심기, 물주기, 다음 날, 수확을 차례로 진행할 수 있어요. 주황 테두리는 추천 화단이에요.\n\n직접 가꾸고 싶다면 아래 도구를 고른 뒤 화단을 터치하세요. 꽃 주문을 완료하면 보너스 잎을 받고, 잎으로 온실과 정원을 꾸밀 수 있어요.\n\n업데이트 | 2026-10-24: 다음 행동 안내와 추천 화단을 추가했어요. 진행 상황은 이 기기에 자동 저장됩니다. 브라우저 데이터를 지우기 전에는 저장 백업을 이용하세요."
+	modal_body.text = "[지금 할 일]의 큰 버튼을 누르면 심기, 물주기, 다음 날, 수확을 차례로 진행할 수 있어요. 주황 테두리는 추천 화단이에요.\n\n온실 3단계를 완성하면 [전시회]가 열려요. 필요한 꽃을 수확해 전시회를 마치면 잎과 정원 등불을 받고 다음 주제에 도전할 수 있어요.\n\n진행 상황은 이 기기에 자동 저장됩니다. 브라우저 데이터를 지우기 전에는 저장 백업을 이용하세요."
 	shop_grid.visible = false
 	backup_row.visible = true
 	modal.visible = true
@@ -1203,6 +1351,7 @@ func _show_journal() -> void:
 	rows.append("1단계: 물 준 꽃 성장 +4")
 	rows.append("2단계: 물주기 3일 유지")
 	rows.append("3단계: 수확 보상 +5잎")
+	rows.append("전시회 완료 %d회 · 온실 3단계부터 도전" % exhibition_count)
 	rows.append("")
 	rows.append("꾸미기 효과 | 종류별 1회")
 	rows.append("화분 %s: 매일 성장 +4" % ("사용 중" if decorations.has("pot") else "없음"))
@@ -1216,13 +1365,24 @@ func _show_journal() -> void:
 	call_deferred("_layout_ui")
 
 
-func _process(_delta: float) -> void:
+func _process(delta: float) -> void:
+	rain_time += delta
+	if rain_effects.visible:
+		for i in range(rain_drops.size()):
+			var drop := rain_drops[i]
+			var fall := fposmod(rain_time * (3.2 + float(i % 5) * 0.25) + float(i * 13 % 31) * 0.11, 3.4)
+			drop.position.y = 3.3 - fall
+	if wind_effects.visible:
+		for i in range(wind_leaves.size()):
+			var leaf := wind_leaves[i]
+			leaf.position.x = -3.0 + fposmod(rain_time * (0.7 + float(i % 3) * 0.15) + float(i) * 0.9, 6.0)
+			leaf.rotation.y += delta * 0.8
 	if not browser_import_pending:
 		return
 	var result = JavaScriptBridge.eval("window.__smallGardenImportResult || ''")
 	if result is String and not result.is_empty():
 		browser_import_pending = false
-		set_process(false)
+		set_process(rain_effects.visible or wind_effects.visible)
 		JavaScriptBridge.eval("window.__smallGardenImportResult = ''")
 		if result != "__cancelled__":
 			_apply_backup_json(result)
@@ -1332,7 +1492,7 @@ func _validated_save(content: String) -> Dictionary:
 	if parser.parse(content) != OK:
 		return {}
 	var data = parser.data
-	if not data is Dictionary or int(data.get("version", -1)) not in [1, 2, 3, SAVE_VERSION]:
+	if not data is Dictionary or int(data.get("version", -1)) not in [1, 2, 3, 4, SAVE_VERSION]:
 		return {}
 	var saved_plants = data.get("plants", null)
 	if not saved_plants is Array or saved_plants.size() != PLOT_COUNT:
@@ -1347,7 +1507,7 @@ func _validated_save(content: String) -> Dictionary:
 	var order: Dictionary = ORDERS[clean_order_number % ORDERS.size()]
 	var clean_order_progress := clampi(int(data.get("order_progress", 0)), 0, int(order["count"]) - 1)
 	var saved_decorations = data.get("decorations", null)
-	if int(data["version"]) < SAVE_VERSION and saved_decorations == null:
+	if int(data["version"]) < 4 and saved_decorations == null:
 		saved_decorations = [null, null, null]
 	if not saved_decorations is Array or saved_decorations.size() != DECOR_SLOT_COUNT:
 		return {}
@@ -1370,6 +1530,14 @@ func _validated_save(content: String) -> Dictionary:
 			})
 		else:
 			return {}
+	var clean_exhibition_count := clampi(int(data.get("exhibition_count", 0)), 0, 1000000)
+	var saved_exhibition_progress = data.get("exhibition_progress", {})
+	if not saved_exhibition_progress is Dictionary:
+		return {}
+	var exhibition_goals: Dictionary = EXHIBITIONS[clean_exhibition_count % EXHIBITIONS.size()]["goals"]
+	var clean_exhibition_progress := {}
+	for kind in ["daisy", "lavender", "sunflower"]:
+		clean_exhibition_progress[kind] = clampi(int(saved_exhibition_progress.get(kind, 0)), 0, int(exhibition_goals[kind]))
 	return {
 		"day": clampi(int(data.get("day", 1)), 1, 1000000),
 		"leaves": clampi(int(data.get("leaves", 30)), 0, 1000000),
@@ -1377,6 +1545,8 @@ func _validated_save(content: String) -> Dictionary:
 		"harvest_counts": clean_counts,
 		"order_number": clean_order_number,
 		"order_progress": clean_order_progress,
+		"exhibition_count": clean_exhibition_count,
+		"exhibition_progress": clean_exhibition_progress,
 		"sound_enabled": bool(data.get("sound_enabled", true)),
 		"decorations": clean_decorations,
 		"plants": clean_plants
@@ -1390,6 +1560,8 @@ func _apply_save(data: Dictionary) -> void:
 	harvest_counts = data["harvest_counts"]
 	order_number = int(data["order_number"])
 	order_progress = int(data["order_progress"])
+	exhibition_count = int(data["exhibition_count"])
+	exhibition_progress = data["exhibition_progress"]
 	sound_enabled = bool(data["sound_enabled"])
 	if music_player != null and not sound_enabled:
 		music_player.stop()
@@ -1413,6 +1585,8 @@ func _save_game() -> void:
 		"harvest_counts": harvest_counts,
 		"order_number": order_number,
 		"order_progress": order_progress,
+		"exhibition_count": exhibition_count,
+		"exhibition_progress": exhibition_progress,
 		"sound_enabled": sound_enabled,
 		"decorations": decorations,
 		"plants": plants

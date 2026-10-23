@@ -8,9 +8,11 @@ func _initialize() -> void:
 func _show_progression() -> void:
 	var game = load("res://scenes/main.tscn").instantiate()
 	root.add_child(game)
-	game.day = 12
+	game.day = 11
 	game.leaves = 36
 	game.greenhouse_level = 3
+	game.exhibition_count = 3
+	game.exhibition_progress = {"daisy": 1, "lavender": 0, "sunflower": 0}
 	game.order_number = 2
 	game.order_progress = 1
 	game.decorations = ["pot", "bench", "lamp"]
@@ -24,4 +26,5 @@ func _show_progression() -> void:
 	game.selected_plot = -1
 	game._redraw_all_plants()
 	game._redraw_all_decorations()
+	game._apply_weather_visuals()
 	game._refresh_ui()

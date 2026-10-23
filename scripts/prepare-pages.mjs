@@ -14,7 +14,8 @@ if (!existsSync(join(source, 'index.html')) || !existsSync(join(source, 'index.w
 mkdirSync(destination, { recursive: true });
 const files = readdirSync(source).filter((name) => !name.endsWith('.import'));
 for (const name of readdirSync(destination)) {
-  if (name === '.nojekyll' || name === 'preview.png' || files.includes(name)) continue;
+  // Cached HTML may still request its older pack after a new release.
+  if (name === '.nojekyll' || name === 'preview.png' || /^index-[0-9a-f]{12}\.pck$/.test(name) || files.includes(name)) continue;
   const target = join(destination, basename(name));
   rmSync(target, { force: true });
 }
