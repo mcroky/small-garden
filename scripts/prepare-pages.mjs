@@ -39,7 +39,7 @@ config.fileSizes[packName] = packSize;
 config.mainPack = packName;
 html = html.replace(configLine[0], `const GODOT_CONFIG = ${JSON.stringify(config)};`);
 html = html.replace('<html lang="en">', '<html lang="ko">');
-html = html.replace('<title>작은정원</title>', '<title>작은정원</title>\n\t\t<meta name="description" content="꽃을 심고 돌보며 나만의 3D 정원을 가꾸는 게임">\n\t\t<meta property="og:title" content="작은정원">\n\t\t<meta property="og:description" content="꽃을 심고 돌보며 나만의 3D 정원을 가꾸는 게임">\n\t\t<meta property="og:image" content="https://mcroky.github.io/small-garden/preview.png">\n\t\t<meta property="og:url" content="https://mcroky.github.io/small-garden/">\n\t\t<link rel="icon" href="index.icon.png">');
+html = html.replace('<title>작은정원</title>', '<title>작은정원</title>\n\t\t<link rel="canonical" href="https://mcroky.github.io/small-garden/">\n\t\t<meta name="description" content="꽃을 심고 돌보며 나만의 3D 정원을 가꾸는 게임">\n\t\t<meta property="og:title" content="작은정원">\n\t\t<meta property="og:description" content="꽃을 심고 돌보며 나만의 3D 정원을 가꾸는 게임">\n\t\t<meta property="og:image" content="https://mcroky.github.io/small-garden/preview.png">\n\t\t<meta property="og:url" content="https://mcroky.github.io/small-garden/">\n\t\t<link rel="icon" href="index.icon.png">');
 writeFileSync(htmlPath, html);
 writeFileSync(join(destination, '.nojekyll'), '');
 console.log(`GitHub Pages 파일 ${files.length}개와 버전 패키지 ${packName}을 docs/에 준비했습니다.`);
