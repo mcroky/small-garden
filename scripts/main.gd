@@ -40,12 +40,12 @@ const DECORATIONS := {
 const TOOL_ORDER := ["daisy", "lavender", "sunflower", "water", "fertilizer", "harvest"]
 const WEATHER_CYCLE := ["맑음", "비", "맑음", "흐림", "바람"]
 const TOOL_TEXT := {
-	"daisy": "데이지 4잎\n매일 성장 +6",
-	"lavender": "라벤더 6잎\n비 오는 날 +12",
-	"sunflower": "해바라기 8잎\n맑은 날 +12",
-	"water": "물주기",
-	"fertilizer": "영양제 5잎",
-	"harvest": "수확하기"
+	"daisy": "데이지 심기\n4잎 · 기본",
+	"lavender": "라벤더 심기\n6잎 · 비",
+	"sunflower": "해바라기 심기\n8잎 · 햇빛",
+	"water": "물주기\n성장 돕기",
+	"fertilizer": "영양제\n5잎 · 보너스",
+	"harvest": "수확하기\n잎 모으기"
 }
 
 var day := 1
@@ -90,9 +90,14 @@ var upgrade_button: Button
 var decorate_button: Button
 var header_label: Label
 var sound_button: Button
+var nav_buttons: Array[Button] = []
+var guide_title: Label
 var detail_label: Label
+var guide_button: Button
+var plot_label: Label
 var order_label: Label
 var message_label: Label
+var tools_heading: Label
 var tool_buttons := {}
 var modal: Control
 var modal_panel: PanelContainer
@@ -390,8 +395,8 @@ func _build_plot(center: Vector3) -> void:
 	var highlight := Node3D.new()
 	plot.add_child(highlight)
 	for side in [-0.68, 0.68]:
-		_box(highlight, Vector3(side, 0.44, 0), Vector3(0.05, 0.05, 1.4), "#f5dc8a")
-		_box(highlight, Vector3(0, 0.44, side), Vector3(1.4, 0.05, 0.05), "#f5dc8a")
+		_box(highlight, Vector3(side, 0.44, 0), Vector3(0.09, 0.07, 1.4), "#f4b447")
+		_box(highlight, Vector3(0, 0.44, side), Vector3(1.4, 0.07, 0.09), "#f4b447")
 	highlight.visible = false
 	highlights.append(highlight)
 	var plant_host := Node3D.new()
@@ -408,10 +413,6 @@ func _redraw_all_plants() -> void:
 		greenhouse_tiers[i].visible = greenhouse_level > i
 	for kind in collection_badges:
 		collection_badges[kind].visible = int(harvest_counts[kind]) >= COLLECTION_GOAL
-	for i in range(PLOT_COUNT):
-		highlights[i].visible = i == selected_plot
-
-
 func _redraw_plant(index: int) -> void:
 	var host := plant_hosts[index]
 	for child in host.get_children():
@@ -531,7 +532,7 @@ func _build_ui() -> void:
 	sound_button = _button(menu, "소리 켬", "#e4e9d6")
 	sound_button.tooltip_text = "배경음과 효과음 켜기 또는 끄기"
 	sound_button.pressed.connect(_toggle_sound)
-	var info := _button(menu, "소식", "#e4e9d6")
+	var info := _button(menu, "도움말", "#e4e9d6")
 	info.pressed.connect(_show_info)
 	var journal := _button(menu, "도감", "#e4e9d6")
 	journal.pressed.connect(_show_journal)
@@ -540,6 +541,7 @@ func _build_ui() -> void:
 			button.custom_minimum_size = Vector2(0, 52)
 			button.add_theme_font_size_override("font_size", 20)
 			button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			nav_buttons.append(button as Button)
 
 	action_row = HBoxContainer.new()
 	action_row.add_theme_constant_override("separation", 10)
@@ -555,19 +557,30 @@ func _build_ui() -> void:
 	decorate_button.pressed.connect(_show_decor_shop)
 
 	detail_panel = _panel(ui_root)
+	var guide_style := _style("#fff9e9", 18)
+	guide_style.border_color = Color("#dfae55")
+	guide_style.set_border_width_all(3)
+	detail_panel.add_theme_stylebox_override("panel", guide_style)
 	var detail_stack := VBoxContainer.new()
-	detail_stack.add_theme_constant_override("separation", 4)
+	detail_stack.add_theme_constant_override("separation", 3)
 	detail_panel.add_child(detail_stack)
-	detail_label = _label(detail_stack, "화단을 눌러 가꾸어 보세요.", 24, "#315342")
+	guide_title = _label(detail_stack, "지금 할 일", 27, "#254a3a")
+	detail_label = _label(detail_stack, "", 22, "#315342")
 	detail_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	order_label = _label(detail_stack, "", 23, "#9a663e")
+	guide_button = _button(detail_stack, "추천 행동", "#e7b76c")
+	guide_button.custom_minimum_size.y = 58
+	guide_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	guide_button.pressed.connect(_on_guide_action)
+	plot_label = _label(detail_stack, "", 19, "#57705e")
+	plot_label.visible = false
+	order_label = _label(detail_stack, "", 20, "#9a663e")
 	order_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 
 	bottom_panel = _panel(ui_root)
 	var bottom_stack := VBoxContainer.new()
 	bottom_stack.add_theme_constant_override("separation", 8)
 	bottom_panel.add_child(bottom_stack)
-	_label(bottom_stack, "도구를 고르고 화단을 터치하세요", 24, "#46614b")
+	tools_heading = _label(bottom_stack, "직접 가꾸기  ·  도구를 골라 화단 터치", 24, "#46614b")
 	var tools_grid := GridContainer.new()
 	tools_grid.columns = 3
 	tools_grid.add_theme_constant_override("h_separation", 8)
@@ -594,7 +607,7 @@ func _build_ui() -> void:
 	var modal_stack := VBoxContainer.new()
 	modal_stack.add_theme_constant_override("separation", 14)
 	modal_panel.add_child(modal_stack)
-	modal_title = _label(modal_stack, "작은정원 | 시제품 v0.8.2", 27, "#254a3a")
+	modal_title = _label(modal_stack, "작은정원 | 시제품 v0.9.0", 27, "#254a3a")
 	modal_body = _label(modal_stack, "", 22, "#315342")
 	modal_body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	shop_grid = GridContainer.new()
@@ -707,18 +720,38 @@ func _layout_ui() -> void:
 	ui_root.size = viewport_size
 	var width := viewport_size.x
 	var height := viewport_size.y
+	var portrait := width / height < 1.15
+	for button in nav_buttons:
+		button.custom_minimum_size.y = 60 if portrait else 58
+		button.add_theme_font_size_override("font_size", 23 if portrait else 24)
+	for button in [day_button, upgrade_button, decorate_button]:
+		button.add_theme_font_size_override("font_size", 25 if portrait else 27)
+	for button in tool_buttons.values():
+		button.custom_minimum_size.y = 84 if portrait else 104
+		button.add_theme_font_size_override("font_size", 25 if portrait else 27)
+	header_label.add_theme_font_size_override("font_size", 32 if portrait else 34)
+	guide_title.add_theme_font_size_override("font_size", 31 if portrait else 32)
+	detail_label.add_theme_font_size_override("font_size", 26 if portrait else 28)
+	guide_button.custom_minimum_size.y = 58 if portrait else 72
+	guide_button.add_theme_font_size_override("font_size", 26 if portrait else 29)
+	plot_label.add_theme_font_size_override("font_size", 22 if portrait else 23)
+	order_label.add_theme_font_size_override("font_size", 23 if portrait else 25)
+	tools_heading.add_theme_font_size_override("font_size", 26 if portrait else 28)
+	message_label.add_theme_font_size_override("font_size", 23 if portrait else 26)
+	modal_title.add_theme_font_size_override("font_size", 31 if portrait else 27)
+	modal_body.add_theme_font_size_override("font_size", 25 if portrait else 22)
 	if width / height >= 1.15:
-		var side_width := minf(700.0, maxf(600.0, width * 0.32))
+		var side_width := minf(850.0, maxf(720.0, width * 0.39))
 		var side_x := width - side_width - 28.0
-		var stack_top := maxf(150.0, (height - 586.0) * 0.5)
+		var stack_top := maxf(80.0, (height - 740.0) * 0.5)
 		top_panel.position = Vector2(24, 24)
-		top_panel.size = Vector2(minf(900.0, side_x - 48.0), 190)
+		top_panel.size = Vector2(minf(900.0, side_x - 48.0), 210)
 		detail_panel.position = Vector2(side_x, stack_top)
-		detail_panel.size = Vector2(side_width, 160)
-		action_row.position = Vector2(side_x, stack_top + 176)
-		action_row.size = Vector2(side_width, 84)
-		bottom_panel.position = Vector2(side_x, stack_top + 276)
-		bottom_panel.size = Vector2(side_width, 310)
+		detail_panel.size = Vector2(side_width, 260)
+		action_row.position = Vector2(side_x, stack_top + 276)
+		action_row.size = Vector2(side_width, 96)
+		bottom_panel.position = Vector2(side_x, stack_top + 388)
+		bottom_panel.size = Vector2(side_width, 352)
 		camera.size = maxf(11.5, 9.8 * height / maxf(500.0, side_x - 120.0))
 		var camera_shift := (width * 0.5 - side_x * 0.5) * camera.size / height * 1.1
 		camera.position = Vector3(8.5 + camera_shift, 11.5, 16)
@@ -728,12 +761,12 @@ func _layout_ui() -> void:
 		var panel_width := minf(width - 32.0, 760.0)
 		var panel_x := (width - panel_width) * 0.5
 		top_panel.position = Vector2(panel_x, 18)
-		top_panel.size = Vector2(panel_width, 190)
+		top_panel.size = Vector2(panel_width, 206)
 		bottom_panel.position = Vector2(panel_x, height - 330)
 		bottom_panel.size = Vector2(panel_width, 310)
-		detail_panel.position = Vector2(panel_x, height - 456)
-		detail_panel.size = Vector2(panel_width, 120)
-		action_row.position = Vector2(panel_x, height - 550)
+		detail_panel.position = Vector2(panel_x, height - 556)
+		detail_panel.size = Vector2(panel_width, 220)
+		action_row.position = Vector2(panel_x, height - 650)
 		action_row.size = Vector2(panel_width, 84)
 		camera.size = maxf(18.5, 18.5 * (720.0 / 1280.0) * height / width)
 		camera.position = Vector3(8.5, 11.5, 16)
@@ -867,13 +900,20 @@ func _tap_plot(index: int) -> void:
 			_message("이미 자라고 있는 화단이에요.")
 		else:
 			var price: int = int(FLOWERS[selected_tool]["cost"])
-			if leaves < price:
+			var free_seed := selected_tool == "daisy" and leaves < price
+			if free_seed:
+				for existing_plant in plants:
+					if existing_plant != null:
+						free_seed = false
+						break
+			if leaves < price and not free_seed:
 				_message("잎이 부족해요. 꽃을 수확해 보세요.")
 			else:
-				leaves -= price
+				if not free_seed:
+					leaves -= price
 				plants[index] = {"kind": selected_tool, "growth": 0, "water": 0, "fed": false}
 				_play_sound(SOUND_PLANT)
-				_message("%s 씨앗을 심었어요. 물을 주고 하루를 보내세요." % FLOWERS[selected_tool]["name"])
+				_message("다시 시작할 데이지를 무료로 심었어요. 물을 주세요." if free_seed else "%s 씨앗을 심었어요. 물을 주고 하루를 보내세요." % FLOWERS[selected_tool]["name"])
 	elif selected_tool == "water":
 		if plant == null:
 			_message("먼저 씨앗을 심어 주세요.")
@@ -1025,12 +1065,68 @@ func _water_capacity() -> int:
 	return 3 if greenhouse_level >= 2 else 2
 
 
+func _next_step() -> Dictionary:
+	for i in range(PLOT_COUNT):
+		var plant = plants[i]
+		if plant != null and int(plant.get("growth", 0)) >= 100:
+			return {
+				"title": "지금 할 일 · 꽃 수확하기",
+				"hint": "%s가 피었어요. 수확해서 잎을 모으세요." % FLOWERS[str(plant["kind"])]["name"],
+				"button": "바로 수확하기",
+				"action": "harvest",
+				"plot": i
+			}
+	for i in range(PLOT_COUNT):
+		var plant = plants[i]
+		if plant != null and int(plant.get("growth", 0)) < 100 and int(plant.get("water", 0)) == 0:
+			return {
+				"title": "지금 할 일 · 마른 꽃에 물주기",
+				"hint": "%s의 흙이 말랐어요. 물을 주면 빠르게 자라요." % FLOWERS[str(plant["kind"])]["name"],
+				"button": "바로 물주기",
+				"action": "water",
+				"plot": i
+			}
+	for plant in plants:
+		if plant != null and int(plant.get("growth", 0)) < 100:
+			return {"title": "지금 할 일 · 다음 날 보내기", "hint": "꽃이 자라는 중이에요. 하루가 지나면 더 자라요.", "button": "다음 날로", "action": "day", "plot": -1}
+	for i in range(PLOT_COUNT):
+		if plants[i] == null:
+			var free_seed := leaves < int(FLOWERS["daisy"]["cost"])
+			return {
+				"title": "지금 할 일 · 꽃 심기",
+				"hint": "잎이 없어도 데이지 한 송이는 무료로 심을 수 있어요." if free_seed else "빈 화단에 데이지를 심고 정원을 가꿔 보세요.",
+				"button": "무료 데이지 심기" if free_seed else "데이지 심기",
+				"action": "plant",
+				"plot": i
+			}
+	return {"title": "지금 할 일 · 정원 살펴보기", "hint": "화단을 눌러 꽃 상태를 확인하세요.", "button": "", "action": "none", "plot": -1}
+
+
+func _on_guide_action() -> void:
+	if selected_tool.begins_with("decor_"):
+		selected_tool = "daisy"
+		_refresh_ui()
+		return
+	var step := _next_step()
+	match str(step["action"]):
+		"harvest", "water", "plant":
+			selected_tool = "daisy" if str(step["action"]) == "plant" else str(step["action"])
+			_tap_plot(int(step["plot"]))
+		"day":
+			_next_day()
+
+
 func _refresh_ui() -> void:
 	header_label.text = "작은정원   %d일째 | %s | 잎 %d" % [day, _weather_for_day(day), leaves]
 	sound_button.text = "소리 켬" if sound_enabled else "소리 끔"
 	sound_button.add_theme_stylebox_override("normal", _style("#b4d5b4" if sound_enabled else "#f3eedf", 12))
+	var step := _next_step()
+	guide_title.text = str(step["title"])
+	detail_label.text = str(step["hint"])
+	guide_button.text = str(step["button"])
+	guide_button.visible = str(step["action"]) != "none"
 	var order: Dictionary = ORDERS[order_number % ORDERS.size()]
-	order_label.text = "꽃 주문 %d | %s %d/%d송이 | 완료 보상 %d잎" % [order_number + 1, FLOWERS[str(order["kind"])]["name"], order_progress, int(order["count"]), int(order["bonus"])]
+	order_label.text = "꽃 주문 · %s %d/%d송이 수확하면 +%d잎" % [FLOWERS[str(order["kind"])]["name"], order_progress, int(order["count"]), int(order["bonus"])]
 	day_button.text = "다음 날: %s >" % _weather_for_day(day + 1)
 	if greenhouse_level >= 3:
 		upgrade_button.text = "온실 최고 단계"
@@ -1038,32 +1134,52 @@ func _refresh_ui() -> void:
 		upgrade_button.text = "온실 개선 %d잎" % (40 + greenhouse_level * 30)
 	for tool in TOOL_ORDER:
 		var button: Button = tool_buttons[tool]
-		button.add_theme_stylebox_override("normal", _style("#a5cfa8" if tool == selected_tool else "#f3eedf", 12))
+		var base_color := "#f3eedf"
+		match tool:
+			"water": base_color = "#d9eae7"
+			"fertilizer": base_color = "#eee3c8"
+			"harvest": base_color = "#e9d6b9"
+		var tool_style := _style("#a5cfa8" if tool == selected_tool else base_color, 12)
+		if tool == selected_tool:
+			tool_style.border_color = Color("#39714e")
+			tool_style.set_border_width_all(3)
+		button.add_theme_stylebox_override("normal", tool_style)
 	var decorating := selected_tool.begins_with("decor_")
 	decorate_button.add_theme_stylebox_override("normal", _style("#a5cfa8" if decorating else "#e6d5ac", 12))
 	if decorating:
-		detail_label.text = "꾸미기 | 원하는 장식 자리를 터치하세요."
-	elif selected_plot == -1:
-		detail_label.text = "씨앗을 골라 화단을 누르세요. 물을 준 뒤 하루를 보내면 자라요."
-	else:
+		guide_title.text = "지금 할 일 · 정원 꾸미기"
+		detail_label.text = "정원 앞의 둥근 장식 자리를 터치하세요."
+		guide_button.text = "일반 가꾸기로 돌아가기"
+		guide_button.visible = true
+	if selected_plot >= 0:
 		var plant = plants[selected_plot]
 		if plant == null:
-			detail_label.text = "%d번 화단 | 비어 있어요" % (selected_plot + 1)
+			plot_label.text = "선택한 %d번 화단 · 비어 있어요" % (selected_plot + 1)
 		else:
 			var water_note := "촉촉" if int(plant.get("water", 0)) > 0 else "마름"
 			var state := "수확 가능" if int(plant.get("growth", 0)) >= 100 else "성장 %d%%" % int(plant.get("growth", 0))
-			detail_label.text = "%d번 화단 | %s | %s | 흙 %s" % [selected_plot + 1, FLOWERS[str(plant["kind"])]["name"], state, water_note]
+			plot_label.text = "선택한 %d번 화단 · %s · %s · 흙 %s" % [selected_plot + 1, FLOWERS[str(plant["kind"])]["name"], state, water_note]
+		plot_label.visible = true
+	else:
+		plot_label.visible = false
+	if message_label.text.is_empty():
+		message_label.text = "주황 테두리는 추천 화단이에요." if int(step["plot"]) >= 0 else "꽃을 키우고 수확해 잎을 모으세요."
 	for i in range(PLOT_COUNT):
-		highlights[i].visible = i == selected_plot
+		var suggested := i == int(step["plot"]) and not decorating
+		var inspected := i == selected_plot and not suggested
+		highlights[i].visible = suggested or inspected
+		if suggested or inspected:
+			for edge in highlights[i].get_children():
+				(edge as MeshInstance3D).material_override = _material("#f4b447" if suggested else "#7bc8ac")
 	for i in range(DECOR_SLOT_COUNT):
 		decor_highlights[i].visible = decorating
 
 
 func _show_info() -> void:
 	_play_sound(SOUND_SELECT)
-	modal_title.text = "작은정원 | 시제품 v0.8.2"
+	modal_title.text = "작은정원 시작하기 | v0.9.0"
 	modal_body.add_theme_font_size_override("font_size", 22)
-	modal_body.text = "업데이트 | 2026-10-23\n배경음과 행동별 효과음을 휴대폰에서도 더 잘 들리도록 키웠어요. 브라우저에서는 첫 터치 뒤 재생되며 위의 소리 버튼으로 끌 수 있어요.\n\n날씨와 꽃별 성장 특성을 보고 정원을 가꿔 보세요.\n\n진행 상황과 소리 설정은 이 기기에 자동 저장됩니다. 로그인이나 서버 전송은 없어요. 브라우저 데이터를 지우면 기록이 사라질 수 있으니 저장 백업을 사용하세요.\n\n개선 의견은 위의 의견 버튼에서 보낼 수 있어요."
+	modal_body.text = "[지금 할 일]의 큰 버튼을 누르면 심기, 물주기, 다음 날, 수확을 차례로 진행할 수 있어요. 주황 테두리는 추천 화단이에요.\n\n직접 가꾸고 싶다면 아래 도구를 고른 뒤 화단을 터치하세요. 꽃 주문을 완료하면 보너스 잎을 받고, 잎으로 온실과 정원을 꾸밀 수 있어요.\n\n업데이트 | 2026-10-24: 다음 행동 안내와 추천 화단을 추가했어요. 진행 상황은 이 기기에 자동 저장됩니다. 브라우저 데이터를 지우기 전에는 저장 백업을 이용하세요."
 	shop_grid.visible = false
 	backup_row.visible = true
 	modal.visible = true
