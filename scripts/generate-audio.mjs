@@ -38,10 +38,11 @@ function rustle(audio, start, duration, gain, smooth = 0.88) {
   }
 }
 
-function wav(audio, filename, peakTarget = 0.72) {
+function wav(audio, filename, peakTarget = 0.65) {
   let peak = 0;
   for (const value of audio) peak = Math.max(peak, Math.abs(value));
-  const scale = peak > 0 ? Math.min(1, peakTarget / peak) : 1;
+  // Normalize quiet synthesized sounds as well as limiting loud ones.
+  const scale = peak > 0 ? peakTarget / peak : 1;
   const bytes = Buffer.alloc(44 + audio.length * 2);
   bytes.write('RIFF', 0);
   bytes.writeUInt32LE(bytes.length - 8, 4);
@@ -86,7 +87,7 @@ for (let i = 0; i < garden.length; i++) {
   const edge = Math.min(1, i / (sampleRate * 0.25), (garden.length - 1 - i) / (sampleRate * 0.25));
   garden[i] *= Math.max(0, edge);
 }
-wav(garden, 'garden_loop.wav', 0.50);
+wav(garden, 'garden_loop.wav', 0.48);
 
 const select = track(0.11);
 tone(select, 0, 0.10, 660, 0.24);

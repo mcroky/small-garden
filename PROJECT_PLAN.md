@@ -1,6 +1,6 @@
 # 작은정원 프로젝트 계획
 
-상태: 플레이 가능한 시제품 v0.8.1을 [GitHub Pages](https://mcroky.github.io/small-garden/)로 배포했다. PC 브라우저 실행을 확인했고 휴대폰 실기기 검증은 남았다.
+상태: 플레이 가능한 시제품 v0.8.2를 [GitHub Pages](https://mcroky.github.io/small-garden/)로 배포했다. 배경음과 효과음의 음량을 높였고, 휴대폰 실기기 청음은 남았다.
 
 ## 방향
 

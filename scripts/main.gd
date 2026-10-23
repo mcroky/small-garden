@@ -128,7 +128,7 @@ func _build_audio() -> void:
 	music_wav.loop_begin = 0
 	music_wav.loop_end = int(music_wav.get_length() * music_wav.mix_rate)
 	music_player.stream = music_wav
-	music_player.volume_db = -8.0
+	music_player.volume_db = -12.0
 	add_child(music_player)
 	for i in range(4):
 		var player := AudioStreamPlayer.new()
@@ -594,7 +594,7 @@ func _build_ui() -> void:
 	var modal_stack := VBoxContainer.new()
 	modal_stack.add_theme_constant_override("separation", 14)
 	modal_panel.add_child(modal_stack)
-	modal_title = _label(modal_stack, "작은정원 | 시제품 v0.8.1", 27, "#254a3a")
+	modal_title = _label(modal_stack, "작은정원 | 시제품 v0.8.2", 27, "#254a3a")
 	modal_body = _label(modal_stack, "", 22, "#315342")
 	modal_body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	shop_grid = GridContainer.new()
@@ -1061,9 +1061,9 @@ func _refresh_ui() -> void:
 
 func _show_info() -> void:
 	_play_sound(SOUND_SELECT)
-	modal_title.text = "작은정원 | 시제품 v0.8.1"
+	modal_title.text = "작은정원 | 시제품 v0.8.2"
 	modal_body.add_theme_font_size_override("font_size", 22)
-	modal_body.text = "업데이트 | 2026-10-23\n심기·물주기·수확에 효과음과 잔잔한 배경음을 추가했어요. 브라우저에서는 첫 터치 뒤 재생되며 위의 소리 버튼으로 끌 수 있어요.\n\n날씨와 꽃별 성장 특성을 보고 정원을 가꿔 보세요.\n\n진행 상황과 소리 설정은 이 기기에 자동 저장됩니다. 로그인이나 서버 전송은 없어요. 브라우저 데이터를 지우면 기록이 사라질 수 있으니 저장 백업을 사용하세요.\n\n개선 의견은 위의 의견 버튼에서 보낼 수 있어요."
+	modal_body.text = "업데이트 | 2026-10-23\n배경음과 행동별 효과음을 휴대폰에서도 더 잘 들리도록 키웠어요. 브라우저에서는 첫 터치 뒤 재생되며 위의 소리 버튼으로 끌 수 있어요.\n\n날씨와 꽃별 성장 특성을 보고 정원을 가꿔 보세요.\n\n진행 상황과 소리 설정은 이 기기에 자동 저장됩니다. 로그인이나 서버 전송은 없어요. 브라우저 데이터를 지우면 기록이 사라질 수 있으니 저장 백업을 사용하세요.\n\n개선 의견은 위의 의견 버튼에서 보낼 수 있어요."
 	shop_grid.visible = false
 	backup_row.visible = true
 	modal.visible = true
