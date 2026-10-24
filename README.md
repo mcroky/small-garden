@@ -84,3 +84,8 @@ git push origin main
 공개 웹 화면 아래의 카카오뱅크 이체 버튼은 Roky Studio 계좌 안내를 새 탭으로 엽니다. `scripts/prepare-pages.mjs`가 내보낸 게임을 `docs/game.html`에 보존하고, `docs/index.html`에 게임과 겹치지 않는 별도 메뉴를 만듭니다. 기존과 같은 출처·경로의 IndexedDB 저장을 사용합니다. 네이티브 Godot 내보내기에 웹 이체 메뉴를 삽입하지 않습니다.
 
 향후 Google Play 출시는 `E:/개인프로젝트/Roky Studio/docs/GOOGLE_PLAY_READINESS.md`를 참고해 초기 Android 빌드·조작·저장·개인정보·결제 정책을 검토합니다. 이번 변경은 웹 메뉴이며 Android 앱 출시가 아닙니다.
+
+
+### 2026-10-24 · 전자책 바로가기
+
+웹 화면 아래 공통 메뉴에서 로키스튜디오 전자책 페이지(https://litt.ly/roky.studio)를 새 탭으로 열 수 있습니다. 게임 영역과 겹치지 않는 웹 메뉴이며 Android 배포판은 외부 링크 정책을 별도로 확인합니다.
