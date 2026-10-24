@@ -77,3 +77,10 @@ git push origin main
 390×844, 360×640 세로 창과 1024×768, 1280×720 가로 창에서 레이아웃을 확인했습니다. 웹 빌드는 로컬과 공개 주소의 PC 브라우저에서 확인했습니다. 휴대폰 브라우저 성능, 터치 조작, 소리 재생, 저장 지속성은 실기기에서 확인해야 합니다. 한글 UI에는 [Google Fonts Jua](https://fonts.google.com/specimen/Jua)를 사용하며 라이선스는 `assets/fonts/Jua-OFL.txt`에 있습니다. 향후 계획은 [PROJECT_PLAN.md](PROJECT_PLAN.md)를 참고하세요.
 
 기존 v1·v2·v3·v4 저장 파일과 백업은 자동으로 읽습니다. 이전 버전의 화단·잎·온실·도감·꽃 주문·장식 상태는 유지되고, 새 전시회 진행도만 0부터 시작합니다.
+
+
+## 2026-10-24 · 공통 이체 안내와 Android 출시 계획
+
+공개 웹 화면 아래의 카카오뱅크 이체 버튼은 Roky Studio 계좌 안내를 새 탭으로 엽니다. `scripts/prepare-pages.mjs`가 내보낸 게임을 `docs/game.html`에 보존하고, `docs/index.html`에 게임과 겹치지 않는 별도 메뉴를 만듭니다. 기존과 같은 출처·경로의 IndexedDB 저장을 사용합니다. 네이티브 Godot 내보내기에 웹 이체 메뉴를 삽입하지 않습니다.
+
+향후 Google Play 출시는 `E:/개인프로젝트/Roky Studio/docs/GOOGLE_PLAY_READINESS.md`를 참고해 초기 Android 빌드·조작·저장·개인정보·결제 정책을 검토합니다. 이번 변경은 웹 메뉴이며 Android 앱 출시가 아닙니다.
