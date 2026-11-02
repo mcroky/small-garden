@@ -100,7 +100,18 @@ body {
 		<link id="-gd-engine-icon" rel="icon" type="image/png" href="index.icon.png" />
 <link rel="apple-touch-icon" href="index.apple-touch-icon.png"/>
 
-	</head>
+	
+<style data-roky-support-hidden>
+/* Support is hidden on games and the Studio homepage (2026-11-02). */
+.roky-support-footer,
+[data-web-only-support],
+.roky-support-dialog,
+#bank-transfer,
+a[href*="buymeacoffee.com/roky.studio"],
+a[href="https://mcroky.github.io/roky-studio/#bank-transfer"],
+a[href="#bank-transfer"] { display: none !important; }
+</style>
+</head>
 	<body>
 		<canvas id="canvas">
 			Your browser does not support the canvas tag.
